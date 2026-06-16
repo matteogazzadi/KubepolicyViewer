@@ -1,0 +1,109 @@
+name: Build, Test & Publish
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  # ── Build & Test ─────────────────────────────────────────────────────────────
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: >
+          dotnet test
+          --no-build -c Release
+          --logger "trx;LogFileName=results.trx"
+          --results-directory test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/*.trx
+
+  # ── Self-contained publish ────────────────────────────────────────────────────
+  publish:
+    name: Publish (${{ matrix.label }})
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            label: Windows x64
+            exe: KubepolicyViewer.exe
+          - rid: win-x86
+            label: Windows x86
+            exe: KubepolicyViewer.exe
+          - rid: linux-x64
+            label: Linux x64
+            exe: KubepolicyViewer
+          - rid: osx-x64
+            label: macOS Intel
+            exe: KubepolicyViewer
+          - rid: osx-arm64
+            label: macOS Apple Silicon
+            exe: KubepolicyViewer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish — ${{ matrix.label }}
+        run: |
+          dotnet publish KubepolicyViewer/KubepolicyViewer.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -o artifacts/${{ matrix.rid }}
+
+      - name: Write run instructions
+        run: |
+          cat > artifacts/${{ matrix.rid }}/HOW-TO-RUN.txt << 'EOF'
+          Kubernetes Network Policy Viewer
+          =================================
+
+          1. Make sure ~/.kube/config points to your cluster.
+          2. Run:   ./${{ matrix.exe }}
+          3. Open:  http://localhost:5000
+
+          To change the port set the ASPNETCORE_URLS environment variable, e.g.:
+            ASPNETCORE_URLS=http://localhost:5169 ./${{ matrix.exe }}
+          EOF
+
+      - name: Upload artifact — ${{ matrix.label }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: KubepolicyViewer-${{ matrix.rid }}
+          path: artifacts/${{ matrix.rid }}
+          retention-days: 30

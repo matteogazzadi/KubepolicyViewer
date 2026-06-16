@@ -71,7 +71,7 @@ public class KubernetesService
             pod.Status?.Phase ?? "Unknown");
 
         var matching = allPolicies.Items
-            .Where(p => LabelsMatchSelector(podLabels, p.Spec.PodSelector))
+            .Where(p => PolicyMatcher.LabelsMatchSelector(podLabels, p.Spec.PodSelector))
             .Select(MapPolicy)
             .ToList();
 
@@ -84,7 +84,7 @@ public class KubernetesService
         {
             Name = p.Metadata.Name,
             Namespace = p.Metadata.NamespaceProperty ?? "",
-            PodSelectorStr = SelectorToString(p.Spec.PodSelector),
+            PodSelectorStr = PolicyMatcher.SelectorToString(p.Spec.PodSelector),
             PolicyTypes = p.Spec.PolicyTypes?.ToList() ?? []
         };
 
@@ -119,17 +119,17 @@ public class KubernetesService
             return new PeerInfo("ipBlock", null, null, peer.IpBlock.Cidr, except);
         }
 
-        bool hasPodSel = HasSelectors(peer.PodSelector);
+        bool hasPodSel = PolicyMatcher.HasSelectors(peer.PodSelector);
         bool hasNsSel = peer.NamespaceSelector != null;
 
         return new PeerInfo(
             (hasPodSel || hasNsSel) ? "pod" : "all",
-            peer.NamespaceSelector != null ? SelectorToString(peer.NamespaceSelector) : null,
-            peer.PodSelector != null ? SelectorToString(peer.PodSelector) : null,
+            peer.NamespaceSelector != null ? PolicyMatcher.SelectorToString(peer.NamespaceSelector) : null,
+            peer.PodSelector != null ? PolicyMatcher.SelectorToString(peer.PodSelector) : null,
             null, null);
     }
 
-    private List<PortInfo> MapPorts(IList<V1NetworkPolicyPort>? ports)
+    private static List<PortInfo> MapPorts(IList<V1NetworkPolicyPort>? ports)
     {
         if (ports == null || ports.Count == 0)
             return [new PortInfo("TCP", "any")];
@@ -138,72 +138,6 @@ public class KubernetesService
             p.Protocol ?? "TCP",
             p.Port?.ToString() ?? "any"
         )).ToList();
-    }
-
-    private bool LabelsMatchSelector(Dictionary<string, string> labels, V1LabelSelector? selector)
-    {
-        if (selector == null) return true;
-
-        bool hasMatchLabels = selector.MatchLabels != null && selector.MatchLabels.Count > 0;
-        bool hasMatchExpressions = selector.MatchExpressions != null && selector.MatchExpressions.Count > 0;
-
-        if (!hasMatchLabels && !hasMatchExpressions) return true;
-
-        if (selector.MatchLabels != null)
-        {
-            foreach (var kv in selector.MatchLabels)
-            {
-                if (!labels.TryGetValue(kv.Key, out var val) || val != kv.Value)
-                    return false;
-            }
-        }
-
-        if (selector.MatchExpressions != null)
-        {
-            foreach (var expr in selector.MatchExpressions)
-            {
-                switch (expr.OperatorProperty)
-                {
-                    case "In":
-                        if (!labels.TryGetValue(expr.Key, out var inVal)
-                            || !(expr.Values ?? []).Contains(inVal))
-                            return false;
-                        break;
-                    case "NotIn":
-                        if (labels.TryGetValue(expr.Key, out var notInVal)
-                            && (expr.Values ?? []).Contains(notInVal))
-                            return false;
-                        break;
-                    case "Exists":
-                        if (!labels.ContainsKey(expr.Key)) return false;
-                        break;
-                    case "DoesNotExist":
-                        if (labels.ContainsKey(expr.Key)) return false;
-                        break;
-                }
-            }
-        }
-
-        return true;
-    }
-
-    private bool HasSelectors(V1LabelSelector? sel) =>
-        sel != null && ((sel.MatchLabels?.Count > 0) || (sel.MatchExpressions?.Count > 0));
-
-    private string SelectorToString(V1LabelSelector? selector)
-    {
-        if (selector == null) return "*";
-
-        var parts = new List<string>();
-
-        if (selector.MatchLabels != null)
-            parts.AddRange(selector.MatchLabels.Select(kv => $"{kv.Key}={kv.Value}"));
-
-        if (selector.MatchExpressions != null)
-            parts.AddRange(selector.MatchExpressions.Select(e =>
-                $"{e.Key} {e.OperatorProperty.ToLower()} [{string.Join(",", e.Values ?? [])}]"));
-
-        return parts.Count == 0 ? "*" : string.Join(", ", parts);
     }
 
     private static Dictionary<string, string> ToDict(IDictionary<string, string>? src)
