@@ -1,0 +1,303 @@
+/* ─── Reset & Base ──────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+    height: 100%;
+    margin: 0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #f0f2f5;
+    color: #1a1a2e;
+}
+
+/* ─── Shell ─────────────────────────────────────────────── */
+.page-full { min-height: 100vh; display: flex; flex-direction: column; }
+
+.kpv-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* ─── Header ─────────────────────────────────────────────── */
+.kpv-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: linear-gradient(135deg, #0d47a1 0%, #1565c0 60%, #1976d2 100%);
+    color: #fff;
+    padding: 1rem 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.kpv-header-brand { display: flex; align-items: center; gap: 1rem; }
+
+.kpv-logo { width: 44px; height: 44px; flex-shrink: 0; }
+
+.kpv-title {
+    margin: 0;
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.kpv-subtitle {
+    margin: 0;
+    font-size: 0.78rem;
+    opacity: 0.8;
+}
+
+/* ─── Toolbar ────────────────────────────────────────────── */
+.kpv-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    background: #fff;
+    padding: 0.75rem 1.5rem;
+    border-bottom: 1px solid #dee2e6;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.kpv-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.kpv-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #495057;
+    white-space: nowrap;
+}
+
+.kpv-select-wrap select {
+    min-width: 220px;
+}
+
+.kpv-toolbar-sep {
+    width: 1px;
+    height: 24px;
+    background: #dee2e6;
+    margin: 0 0.25rem;
+}
+
+/* ─── Main content ───────────────────────────────────────── */
+.kpv-content {
+    flex: 1;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+/* ─── Summary cards ──────────────────────────────────────── */
+.kpv-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.kpv-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+    border-left: 4px solid #1976d2;
+}
+.kpv-card-pod      { border-left-color: #1976d2; }
+.kpv-card-policies { border-left-color: #6c3483; }
+.kpv-card-ingress  { border-left-color: #2e7d32; }
+.kpv-card-egress   { border-left-color: #e65100; }
+
+.kpv-card-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #6c757d;
+    margin-bottom: 0.25rem;
+}
+
+.kpv-card-value {
+    font-size: 1.9rem;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 0.35rem;
+    color: #1a1a2e;
+}
+
+.kpv-card-pod .kpv-card-value { font-size: 1rem; word-break: break-all; }
+
+.kpv-card-sub {
+    font-size: 0.78rem;
+    color: #6c757d;
+}
+
+/* ─── Graph section ──────────────────────────────────────── */
+.kpv-section {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+    overflow: hidden;
+}
+
+.kpv-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.25rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.kpv-section-title {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #1a1a2e;
+}
+
+.kpv-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.5rem 1.25rem;
+    background: #fdfdfd;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 0.75rem;
+}
+
+.kpv-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    font-weight: 600;
+    color: #fff;
+}
+
+.kpv-legend-item::before { content: '●'; }
+
+.kpv-legend-pod     { background: #1a73e8; }
+.kpv-legend-ingress { background: #2e7d32; }
+.kpv-legend-egress  { background: #e65100; }
+.kpv-legend-any     { background: #f9a825; color: #333; }
+
+.kpv-graph {
+    height: 440px;
+    width: 100%;
+    background: #fafbfd;
+}
+
+/* ─── Policy detail cards ────────────────────────────────── */
+.kpv-policy-card {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin: 1rem 1.25rem;
+    overflow: hidden;
+}
+
+.kpv-policy-header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(90deg, #e8eaf6 0%, #f5f5f5 100%);
+    border-bottom: 1px solid #dee2e6;
+}
+
+.kpv-policy-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #1a1a2e;
+    margin-right: 0.25rem;
+}
+
+.kpv-policy-badges { display: flex; gap: 0.35rem; }
+
+.kpv-policy-sel {
+    font-size: 0.75rem;
+    color: #6c757d;
+    margin-left: auto;
+    font-family: monospace;
+}
+
+.kpv-rules-section { border-top: 1px solid #f0f0f0; }
+
+.kpv-rules-label {
+    padding: 0.35rem 1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.kpv-rules-ingress .kpv-rules-label {
+    color: #2e7d32;
+    background: #f1f8f1;
+}
+
+.kpv-rules-egress .kpv-rules-label {
+    color: #bf360c;
+    background: #fff8f5;
+}
+
+.kpv-rules-section .table { margin: 0; }
+
+.kpv-rules-ingress .table thead th { background: #f1f8f1; }
+.kpv-rules-egress  .table thead th { background: #fff8f5; }
+
+.kpv-peer { margin-bottom: 0.15rem; font-size: 0.85rem; }
+
+/* ─── Empty / Welcome states ─────────────────────────────── */
+.kpv-empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: #6c757d;
+}
+
+.kpv-empty-icon { font-size: 3rem; margin-bottom: 0.75rem; }
+.kpv-empty p { font-size: 0.95rem; margin: 0; }
+
+.kpv-welcome {
+    text-align: center;
+    padding: 4rem 2rem;
+}
+
+.kpv-welcome-icon { margin-bottom: 1.5rem; }
+
+.kpv-welcome h2 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 0.75rem;
+}
+
+.kpv-welcome p {
+    font-size: 1rem;
+    color: #6c757d;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+/* ─── Blazor error UI ────────────────────────────────────── */
+#blazor-error-ui {
+    background: #fff3cd;
+    bottom: 0;
+    box-shadow: 0 -2px 6px rgba(0,0,0,0.15);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+    font-size: 0.9rem;
+    border-top: 2px solid #ffc107;
+}
+
+#blazor-error-ui .dismiss { cursor: pointer; font-weight: bold; float: right; }
+
+a, .btn-link { color: #1565c0; }
