@@ -2,7 +2,7 @@ name: Build, Test & Publish
 
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: ["claude/**"]   # feature branches only; main is handled by release.yml
   pull_request:
     branches: [main]
 

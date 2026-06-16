@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # push tag + create release
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  release:
+    name: Tag, Build & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history for tag lookup)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Compute next patch version ────────────────────────────────────────
+      - name: Compute next version
+        id: version
+        run: |
+          LATEST=$(git tag --sort=-v:refname \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | head -1)
+
+          if [ -z "$LATEST" ]; then
+            NEW_TAG="v1.0.0"
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+            PATCH=$((PATCH + 1))
+            NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          fi
+
+          echo "tag=$NEW_TAG"            >> $GITHUB_OUTPUT
+          echo "previous=${LATEST:-—}"  >> $GITHUB_OUTPUT
+          echo "Releasing $NEW_TAG (previous: ${LATEST:-none})"
+
+      # ── .NET ─────────────────────────────────────────────────────────────
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Test
+        run: >
+          dotnet test
+          --no-build -c Release
+          --logger "trx;LogFileName=results.trx"
+          --results-directory test-results
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ steps.version.outputs.tag }}
+          path: test-results/*.trx
+
+      # ── Self-contained publish + zip ──────────────────────────────────────
+      - name: Publish self-contained artifacts
+        run: |
+          mkdir -p release
+          TAG=${{ steps.version.outputs.tag }}
+
+          for RID in win-x64 win-x86 linux-x64 osx-x64 osx-arm64; do
+            echo "::group::Publishing $RID"
+
+            dotnet publish KubepolicyViewer/KubepolicyViewer.csproj \
+              -c Release \
+              -r $RID \
+              --self-contained true \
+              -o publish/$RID
+
+            # Run instructions bundled inside each zip
+            cat > publish/$RID/HOW-TO-RUN.txt << EOF
+          Kubernetes Network Policy Viewer $TAG
+          ======================================
+
+          1. Ensure ~/.kube/config points to your cluster.
+          2. Run the executable:
+               Windows : KubepolicyViewer.exe
+               Linux   : ./KubepolicyViewer
+               macOS   : ./KubepolicyViewer
+          3. Open http://localhost:5000 in your browser.
+
+          To change the port:
+            ASPNETCORE_URLS=http://localhost:5169 ./KubepolicyViewer
+          EOF
+
+            cd publish/$RID
+            zip -r ../../release/KubepolicyViewer-${RID}-${TAG}.zip .
+            cd ../..
+
+            echo "::endgroup::"
+          done
+
+      # ── Push git tag ──────────────────────────────────────────────────────
+      - name: Push git tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ steps.version.outputs.tag }}
+          git push origin ${{ steps.version.outputs.tag }}
+
+      # ── Create GitHub Release with zip attachments ────────────────────────
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create ${{ steps.version.outputs.tag }} \
+            --title "Release ${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            release/*.zip
