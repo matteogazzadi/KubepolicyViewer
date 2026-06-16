@@ -1,0 +1,646 @@
+@page "/"
+@rendermode InteractiveServer
+@inject KubernetesService K8s
+@inject IJSRuntime JS
+
+<PageTitle>Kubernetes Network Policy Viewer</PageTitle>
+
+<div class="kpv-shell">
+
+    <!-- Header -->
+    <header class="kpv-header">
+        <div class="kpv-header-brand">
+            <svg class="kpv-logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="16" cy="16" r="15" fill="#326CE5" stroke="#fff" stroke-width="1.5"/>
+                <path d="M16 5 L19 13 H27 L21 18 L23 26 L16 21 L9 26 L11 18 L5 13 H13 Z" fill="white"/>
+            </svg>
+            <div>
+                <h1 class="kpv-title">Network Policy Viewer</h1>
+                <p class="kpv-subtitle">Kubernetes — inspect which policies affect a pod</p>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(K8s.InitializationError))
+        {
+            <div class="alert alert-danger mb-0 py-2 px-3" style="font-size:0.85rem">
+                <strong>Connection error:</strong> @K8s.InitializationError
+            </div>
+        }
+    </header>
+
+    <!-- Selectors toolbar -->
+    <div class="kpv-toolbar">
+        <div class="kpv-toolbar-group">
+            <label class="kpv-label">Namespace</label>
+            <div class="kpv-select-wrap">
+                <select class="form-select form-select-sm" value="@selectedNamespace"
+                        @onchange="OnNamespaceChanged" disabled="@(namespaces.Count == 0)">
+                    <option value="">— select namespace —</option>
+                    @foreach (var ns in namespaces)
+                    {
+                        <option value="@ns.Name">@ns.Name</option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        <div class="kpv-toolbar-sep"></div>
+
+        <div class="kpv-toolbar-group">
+            <label class="kpv-label">Pod</label>
+            <div class="kpv-select-wrap">
+                <select class="form-select form-select-sm" value="@selectedPod"
+                        @onchange="OnPodChanged" disabled="@(pods.Count == 0)">
+                    <option value="">— select pod —</option>
+                    @foreach (var pod in pods)
+                    {
+                        <option value="@pod.Name">
+                            @pod.Name
+                            @(pod.Phase != "Running" ? $" ({pod.Phase})" : "")
+                        </option>
+                    }
+                </select>
+            </div>
+        </div>
+
+        <div class="kpv-toolbar-sep"></div>
+
+        <button class="btn btn-sm btn-outline-primary" @onclick="RefreshAsync" disabled="@isLoading">
+            @if (isLoading)
+            {
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                <span>Loading…</span>
+            }
+            else
+            {
+                <span>⟳ Refresh</span>
+            }
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(error))
+    {
+        <div class="kpv-content">
+            <div class="alert alert-warning">@error</div>
+        </div>
+    }
+    else if (currentPod != null)
+    {
+        <!-- Summary cards -->
+        <div class="kpv-content">
+            <div class="kpv-cards">
+                <div class="kpv-card kpv-card-pod">
+                    <div class="kpv-card-label">Selected Pod</div>
+                    <div class="kpv-card-value">@currentPod.Name</div>
+                    <div class="kpv-card-sub">
+                        @foreach (var lbl in currentPod.Labels)
+                        {
+                            <span class="badge bg-secondary me-1">@lbl.Key=@lbl.Value</span>
+                        }
+                    </div>
+                </div>
+
+                <div class="kpv-card kpv-card-policies">
+                    <div class="kpv-card-label">Matching Policies</div>
+                    <div class="kpv-card-value">@policies.Count</div>
+                    <div class="kpv-card-sub">NetworkPolicy objects</div>
+                </div>
+
+                <div class="kpv-card kpv-card-ingress">
+                    <div class="kpv-card-label">Ingress Rules</div>
+                    <div class="kpv-card-value">@policies.Sum(p => p.IngressRules.Count)</div>
+                    <div class="kpv-card-sub">
+                        @(policies.Any(p => p.PolicyTypes.Contains("Ingress"))
+                            ? "Ingress controlled"
+                            : "Ingress unrestricted")
+                    </div>
+                </div>
+
+                <div class="kpv-card kpv-card-egress">
+                    <div class="kpv-card-label">Egress Rules</div>
+                    <div class="kpv-card-value">@policies.Sum(p => p.EgressRules.Count)</div>
+                    <div class="kpv-card-sub">
+                        @(policies.Any(p => p.PolicyTypes.Contains("Egress"))
+                            ? "Egress controlled"
+                            : "Egress unrestricted")
+                    </div>
+                </div>
+            </div>
+
+            <!-- Graph -->
+            <div class="kpv-section">
+                <div class="kpv-section-header">
+                    <span class="kpv-section-title">Traffic Graph</span>
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="FitGraphAsync">Fit view</button>
+                </div>
+                <div class="kpv-legend">
+                    <span class="kpv-legend-item kpv-legend-pod">Pod</span>
+                    <span class="kpv-legend-item kpv-legend-ingress">Ingress source</span>
+                    <span class="kpv-legend-item kpv-legend-egress">Egress destination</span>
+                    <span class="kpv-legend-item kpv-legend-any">Unrestricted (any)</span>
+                </div>
+                <div id="policy-graph" class="kpv-graph"></div>
+            </div>
+
+            <!-- Policy table -->
+            <div class="kpv-section">
+                <div class="kpv-section-header">
+                    <span class="kpv-section-title">Policy Details</span>
+                </div>
+
+                @if (policies.Count == 0)
+                {
+                    <div class="kpv-empty">
+                        <div class="kpv-empty-icon">🛡️</div>
+                        <p>No NetworkPolicies match this pod. All traffic is allowed by default.</p>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var policy in policies)
+                    {
+                        <div class="kpv-policy-card">
+                            <div class="kpv-policy-header">
+                                <span class="kpv-policy-name">@policy.Name</span>
+                                <div class="kpv-policy-badges">
+                                    @foreach (var t in policy.PolicyTypes)
+                                    {
+                                        <span class="badge @(t == "Ingress" ? "bg-success" : "bg-warning text-dark")">@t</span>
+                                    }
+                                </div>
+                                <span class="kpv-policy-sel">podSelector: @policy.PodSelectorStr</span>
+                            </div>
+
+                            @if (policy.IngressRules.Count > 0)
+                            {
+                                <div class="kpv-rules-section kpv-rules-ingress">
+                                    <div class="kpv-rules-label">↓ Ingress</div>
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>From (sources)</th>
+                                                <th>Ports allowed</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @for (int i = 0; i < policy.IngressRules.Count; i++)
+                                            {
+                                                var rule = policy.IngressRules[i];
+                                                var idx = i + 1;
+                                                <tr>
+                                                    <td class="text-muted">@idx</td>
+                                                    <td>
+                                                        @if (rule.AllowsAll)
+                                                        {
+                                                            <span class="badge bg-warning text-dark">All sources (any)</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            @foreach (var peer in rule.From)
+                                                            {
+                                                                <div class="kpv-peer">
+                                                                    @RenderPeer(peer)
+                                                                </div>
+                                                            }
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        @foreach (var port in rule.Ports)
+                                                        {
+                                                            <span class="badge bg-light text-dark border me-1">@port.Display</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else if (policy.PolicyTypes.Contains("Ingress"))
+                            {
+                                <div class="kpv-rules-section kpv-rules-ingress">
+                                    <div class="kpv-rules-label">↓ Ingress</div>
+                                    <div class="alert alert-danger mb-0 py-1 px-3" style="font-size:0.85rem">
+                                        All ingress traffic is <strong>blocked</strong> (no ingress rules defined)
+                                    </div>
+                                </div>
+                            }
+
+                            @if (policy.EgressRules.Count > 0)
+                            {
+                                <div class="kpv-rules-section kpv-rules-egress">
+                                    <div class="kpv-rules-label">↑ Egress</div>
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th>#</th>
+                                                <th>To (destinations)</th>
+                                                <th>Ports allowed</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @for (int i = 0; i < policy.EgressRules.Count; i++)
+                                            {
+                                                var rule = policy.EgressRules[i];
+                                                var idx = i + 1;
+                                                <tr>
+                                                    <td class="text-muted">@idx</td>
+                                                    <td>
+                                                        @if (rule.AllowsAll)
+                                                        {
+                                                            <span class="badge bg-warning text-dark">All destinations (any)</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            @foreach (var peer in rule.To)
+                                                            {
+                                                                <div class="kpv-peer">
+                                                                    @RenderPeer(peer)
+                                                                </div>
+                                                            }
+                                                        }
+                                                    </td>
+                                                    <td>
+                                                        @foreach (var port in rule.Ports)
+                                                        {
+                                                            <span class="badge bg-light text-dark border me-1">@port.Display</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else if (policy.PolicyTypes.Contains("Egress"))
+                            {
+                                <div class="kpv-rules-section kpv-rules-egress">
+                                    <div class="kpv-rules-label">↑ Egress</div>
+                                    <div class="alert alert-danger mb-0 py-1 px-3" style="font-size:0.85rem">
+                                        All egress traffic is <strong>blocked</strong> (no egress rules defined)
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
+    else if (!isLoading && string.IsNullOrEmpty(selectedPod) && !string.IsNullOrEmpty(selectedNamespace))
+    {
+        <div class="kpv-content">
+            <div class="kpv-empty mt-4">
+                <div class="kpv-empty-icon">⬆️</div>
+                <p>Select a pod above to inspect its network policies.</p>
+            </div>
+        </div>
+    }
+    else if (!isLoading && string.IsNullOrEmpty(selectedNamespace))
+    {
+        <div class="kpv-content">
+            <div class="kpv-welcome">
+                <div class="kpv-welcome-icon">
+                    <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" width="80" height="80">
+                        <circle cx="32" cy="32" r="30" fill="#326CE5"/>
+                        <path d="M32 10 L38 26 H54 L42 36 L46 52 L32 42 L18 52 L22 36 L10 26 H26 Z" fill="white"/>
+                    </svg>
+                </div>
+                <h2>Welcome to Kubernetes Network Policy Viewer</h2>
+                <p>Select a <strong>namespace</strong> then a <strong>pod</strong> to visualize which NetworkPolicies control its traffic.</p>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private List<NamespaceInfo> namespaces = [];
+    private List<PodInfo> pods = [];
+    private List<NetworkPolicyInfo> policies = [];
+    private PodInfo? currentPod;
+    private string selectedNamespace = "";
+    private string selectedPod = "";
+    private bool isLoading = false;
+    private string? error;
+    private bool graphNeedsUpdate = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (K8s.InitializationError != null) return;
+        await LoadNamespacesAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (graphNeedsUpdate)
+        {
+            graphNeedsUpdate = false;
+            await RenderGraphAsync();
+        }
+    }
+
+    private async Task LoadNamespacesAsync()
+    {
+        isLoading = true;
+        error = null;
+        try
+        {
+            namespaces = await K8s.GetNamespacesAsync();
+        }
+        catch (Exception ex)
+        {
+            error = $"Error loading namespaces: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OnNamespaceChanged(ChangeEventArgs e)
+    {
+        selectedNamespace = e.Value?.ToString() ?? "";
+        selectedPod = "";
+        pods = [];
+        policies = [];
+        currentPod = null;
+        error = null;
+        await JS.InvokeVoidAsync("policyGraph.destroy");
+
+        if (!string.IsNullOrEmpty(selectedNamespace))
+            await LoadPodsAsync();
+    }
+
+    private async Task LoadPodsAsync()
+    {
+        isLoading = true;
+        error = null;
+        try
+        {
+            pods = await K8s.GetPodsAsync(selectedNamespace);
+        }
+        catch (Exception ex)
+        {
+            error = $"Error loading pods: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task OnPodChanged(ChangeEventArgs e)
+    {
+        selectedPod = e.Value?.ToString() ?? "";
+        policies = [];
+        currentPod = null;
+        error = null;
+        await JS.InvokeVoidAsync("policyGraph.destroy");
+
+        if (!string.IsNullOrEmpty(selectedPod))
+            await LoadPoliciesAsync();
+    }
+
+    private async Task LoadPoliciesAsync()
+    {
+        isLoading = true;
+        error = null;
+        try
+        {
+            var (p, pod) = await K8s.GetNetworkPoliciesForPodAsync(selectedNamespace, selectedPod);
+            policies = p;
+            currentPod = pod;
+            graphNeedsUpdate = true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Error loading policies: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (!string.IsNullOrEmpty(selectedPod))
+            await LoadPoliciesAsync();
+        else if (!string.IsNullOrEmpty(selectedNamespace))
+            await LoadPodsAsync();
+        else
+            await LoadNamespacesAsync();
+    }
+
+    private async Task FitGraphAsync()
+    {
+        await JS.InvokeVoidAsync("policyGraph.fit");
+    }
+
+    private async Task RenderGraphAsync()
+    {
+        if (currentPod == null) return;
+
+        var graph = BuildGraphData(currentPod, policies);
+        await JS.InvokeVoidAsync("policyGraph.init", "policy-graph", graph);
+    }
+
+    private GraphData BuildGraphData(PodInfo pod, List<NetworkPolicyInfo> matchingPolicies)
+    {
+        var nodes = new List<VisNode>();
+        var edges = new List<VisEdge>();
+        var nodeIds = new HashSet<string>();
+        int edgeCounter = 0;
+
+        string podNodeId = $"pod:{pod.Name}";
+        nodes.Add(new VisNode
+        {
+            Id = podNodeId,
+            Label = pod.Name,
+            Group = "pod",
+            Title = $"Pod: {pod.Name}\nNamespace: {pod.Namespace}\nLabels: {string.Join(", ", pod.Labels.Select(kv => $"{kv.Key}={kv.Value}"))}"
+        });
+        nodeIds.Add(podNodeId);
+
+        string AddOrGetNode(string id, string label, string group, string? title = null)
+        {
+            if (!nodeIds.Contains(id))
+            {
+                nodes.Add(new VisNode { Id = id, Label = label, Group = group, Title = title });
+                nodeIds.Add(id);
+            }
+            return id;
+        }
+
+        bool hasIngress = matchingPolicies.Any(p => p.PolicyTypes.Contains("Ingress"));
+        bool hasEgress = matchingPolicies.Any(p => p.PolicyTypes.Contains("Egress"));
+
+        if (!hasIngress)
+        {
+            string anyId = "any_ingress_unrestricted";
+            AddOrGetNode(anyId, "All ingress\n(unrestricted)", "any_ingress", "No NetworkPolicy controls ingress — all sources allowed");
+            edges.Add(new VisEdge
+            {
+                Id = $"e{edgeCounter++}",
+                From = anyId,
+                To = podNodeId,
+                Label = "any",
+                Color = "#ffd600"
+            });
+        }
+
+        if (!hasEgress)
+        {
+            string anyId = "any_egress_unrestricted";
+            AddOrGetNode(anyId, "All egress\n(unrestricted)", "any_egress", "No NetworkPolicy controls egress — all destinations allowed");
+            edges.Add(new VisEdge
+            {
+                Id = $"e{edgeCounter++}",
+                From = podNodeId,
+                To = anyId,
+                Label = "any",
+                Color = "#ff9800"
+            });
+        }
+
+        foreach (var policy in matchingPolicies)
+        {
+            foreach (var rule in policy.IngressRules)
+            {
+                string portLabel = string.Join(", ", rule.Ports.Select(p => p.Display));
+
+                if (rule.AllowsAll)
+                {
+                    string srcId = $"ingress_any:{policy.Name}";
+                    AddOrGetNode(srcId, $"Any source\n[{policy.Name}]", "any_ingress",
+                        $"Policy: {policy.Name}\nAllow all ingress sources");
+                    edges.Add(new VisEdge
+                    {
+                        Id = $"e{edgeCounter++}",
+                        From = srcId,
+                        To = podNodeId,
+                        Label = portLabel,
+                        Color = "#ffd600",
+                        Title = $"Policy: {policy.Name}\nPorts: {portLabel}"
+                    });
+                }
+                else
+                {
+                    foreach (var peer in rule.From)
+                    {
+                        string srcId = $"ingress:{policy.Name}:{peer.DisplayLabel}";
+                        AddOrGetNode(srcId, peer.DisplayLabel, peer.Kind == "ipBlock" ? "ingress_source" : "ingress_source",
+                            $"Policy: {policy.Name}\n{peer.DisplayLabel}");
+                        edges.Add(new VisEdge
+                        {
+                            Id = $"e{edgeCounter++}",
+                            From = srcId,
+                            To = podNodeId,
+                            Label = portLabel,
+                            Color = "#2e7d32",
+                            Title = $"Policy: {policy.Name}\nFrom: {peer.DisplayLabel}\nPorts: {portLabel}"
+                        });
+                    }
+                }
+            }
+
+            if (policy.PolicyTypes.Contains("Ingress") && policy.IngressRules.Count == 0)
+            {
+                string blockedId = $"ingress_blocked:{policy.Name}";
+                AddOrGetNode(blockedId, $"Blocked\n[{policy.Name}]", "blocked",
+                    $"Policy: {policy.Name}\nAll ingress blocked (no rules)");
+                edges.Add(new VisEdge
+                {
+                    Id = $"e{edgeCounter++}",
+                    From = blockedId,
+                    To = podNodeId,
+                    Label = "blocked",
+                    Color = "#c62828",
+                    Dashes = true
+                });
+            }
+
+            foreach (var rule in policy.EgressRules)
+            {
+                string portLabel = string.Join(", ", rule.Ports.Select(p => p.Display));
+
+                if (rule.AllowsAll)
+                {
+                    string dstId = $"egress_any:{policy.Name}";
+                    AddOrGetNode(dstId, $"Any dest\n[{policy.Name}]", "any_egress",
+                        $"Policy: {policy.Name}\nAllow all egress destinations");
+                    edges.Add(new VisEdge
+                    {
+                        Id = $"e{edgeCounter++}",
+                        From = podNodeId,
+                        To = dstId,
+                        Label = portLabel,
+                        Color = "#ff9800",
+                        Title = $"Policy: {policy.Name}\nPorts: {portLabel}"
+                    });
+                }
+                else
+                {
+                    foreach (var peer in rule.To)
+                    {
+                        string dstId = $"egress:{policy.Name}:{peer.DisplayLabel}";
+                        AddOrGetNode(dstId, peer.DisplayLabel, "egress_dest",
+                            $"Policy: {policy.Name}\n{peer.DisplayLabel}");
+                        edges.Add(new VisEdge
+                        {
+                            Id = $"e{edgeCounter++}",
+                            From = podNodeId,
+                            To = dstId,
+                            Label = portLabel,
+                            Color = "#e65100",
+                            Title = $"Policy: {policy.Name}\nTo: {peer.DisplayLabel}\nPorts: {portLabel}"
+                        });
+                    }
+                }
+            }
+
+            if (policy.PolicyTypes.Contains("Egress") && policy.EgressRules.Count == 0)
+            {
+                string blockedId = $"egress_blocked:{policy.Name}";
+                AddOrGetNode(blockedId, $"Blocked\n[{policy.Name}]", "blocked",
+                    $"Policy: {policy.Name}\nAll egress blocked (no rules)");
+                edges.Add(new VisEdge
+                {
+                    Id = $"e{edgeCounter++}",
+                    From = podNodeId,
+                    To = blockedId,
+                    Label = "blocked",
+                    Color = "#c62828",
+                    Dashes = true
+                });
+            }
+        }
+
+        return new GraphData { Nodes = nodes, Edges = edges };
+    }
+
+    private RenderFragment RenderPeer(PeerInfo peer) => builder =>
+    {
+        builder.OpenElement(0, "span");
+        if (peer.Kind == "ipBlock")
+        {
+            builder.AddMarkupContent(1, $"<span class=\"badge bg-info text-dark me-1\">IP</span> {peer.IpBlock}");
+            if (peer.Except != null)
+                builder.AddMarkupContent(2, $" <span class=\"text-muted\">except {peer.Except}</span>");
+        }
+        else if (peer.Kind == "namespace")
+        {
+            builder.AddMarkupContent(3, $"<span class=\"badge bg-primary me-1\">NS</span> {peer.NamespaceSelector ?? "*"}");
+        }
+        else
+        {
+            if (peer.NamespaceSelector != null)
+                builder.AddMarkupContent(4, $"<span class=\"badge bg-primary me-1\">NS</span> {peer.NamespaceSelector} ");
+            if (peer.PodSelector != null)
+                builder.AddMarkupContent(5, $"<span class=\"badge bg-secondary me-1\">Pod</span> {peer.PodSelector}");
+            if (peer.NamespaceSelector == null && peer.PodSelector == null)
+                builder.AddMarkupContent(6, "<span class=\"badge bg-warning text-dark\">same namespace</span>");
+        }
+        builder.CloseElement();
+    };
+}
