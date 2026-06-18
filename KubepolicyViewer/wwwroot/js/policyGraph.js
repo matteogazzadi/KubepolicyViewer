@@ -61,13 +61,13 @@
                     pod: {
                         shape: 'dot', size: 38,
                         color: {
-                            background: '#001a33',
-                            border: '#00b4ff',
-                            highlight: { background: '#002a50', border: '#40c8ff' },
-                            hover: { background: '#001e40', border: '#00d4ff' }
+                            background: '#001a0d',
+                            border: '#00ff88',
+                            highlight: { background: '#002a14', border: '#69f0ae' },
+                            hover: { background: '#001e0d', border: '#00ff99' }
                         },
-                        font: { color: '#00b4ff', size: 13, bold: true },
-                        shadow: { enabled: true, color: 'rgba(0,180,255,0.65)', size: 22, x: 0, y: 0 }
+                        font: { color: '#00ff88', size: 13, bold: true },
+                        shadow: { enabled: true, color: 'rgba(0,255,136,0.65)', size: 22, x: 0, y: 0 }
                     },
                     ingress_source: {
                         shape: 'ellipse',

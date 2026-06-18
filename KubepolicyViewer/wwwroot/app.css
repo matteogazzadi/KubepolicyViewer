@@ -7,13 +7,13 @@
     --bg-surface: #111827;
     --bg-hover:   #152035;
 
-    --border:        rgba(0, 180, 255, 0.10);
-    --border-bright: rgba(0, 180, 255, 0.28);
-    --border-active: #00b4ff;
+    --border:        rgba(0, 255, 136, 0.10);
+    --border-bright: rgba(0, 255, 136, 0.28);
+    --border-active: #00ff88;
 
-    --accent:      #00b4ff;
-    --accent-dim:  rgba(0, 180, 255, 0.08);
-    --accent-glow: 0 0 12px rgba(0, 180, 255, 0.4);
+    --accent:      #00ff88;
+    --accent-dim:  rgba(0, 255, 136, 0.08);
+    --accent-glow: 0 0 12px rgba(0, 255, 136, 0.4);
 
     --green:  #00e676;
     --orange: #ff6b35;
@@ -21,10 +21,10 @@
     --purple: #b388ff;
     --yellow: #ffd740;
 
-    --text-primary:   #d4e3ff;
-    --text-secondary: #6b84a4;
-    --text-dim:       #3a5070;
-    --text-accent:    #00b4ff;
+    --text-primary:   #ccffcc;
+    --text-secondary: #5a8a65;
+    --text-dim:       #2a4a35;
+    --text-accent:    #00ff88;
 
     --font-ui:   'Inter', 'Segoe UI', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', 'Consolas', monospace;
@@ -257,7 +257,7 @@ html, body {
     position: absolute;
     top: 0; right: 0;
     width: 55px; height: 55px;
-    background: radial-gradient(circle at top right, rgba(0,180,255,0.05), transparent 70%);
+    background: radial-gradient(circle at top right, rgba(0,255,136,0.05), transparent 70%);
 }
 
 .kpv-card-pod      { border-left-color: var(--accent); }
@@ -342,7 +342,7 @@ html, body {
 
 .kpv-legend-item::before { content: '●'; font-size: 0.65em; }
 
-.kpv-legend-pod     { color: var(--accent);  border-color: rgba(0,180,255,0.3);  background: rgba(0,180,255,0.07); }
+.kpv-legend-pod     { color: var(--accent);  border-color: rgba(0,255,136,0.3);  background: rgba(0,255,136,0.07); }
 .kpv-legend-ingress { color: var(--green);   border-color: rgba(0,230,118,0.3);  background: rgba(0,230,118,0.07); }
 .kpv-legend-egress  { color: var(--orange);  border-color: rgba(255,107,53,0.3); background: rgba(255,107,53,0.07); }
 .kpv-legend-any     { color: var(--yellow);  border-color: rgba(255,215,64,0.3); background: rgba(255,215,64,0.07); }
@@ -452,7 +452,7 @@ html, body {
 
 .kpv-badge-ingress { color: var(--green);  border-color: rgba(0,230,118,0.35);  background: rgba(0,230,118,0.1); }
 .kpv-badge-egress  { color: var(--orange); border-color: rgba(255,107,53,0.35); background: rgba(255,107,53,0.1); }
-.kpv-badge-ns      { color: var(--accent); border-color: rgba(0,180,255,0.35);  background: rgba(0,180,255,0.1); }
+.kpv-badge-ns      { color: var(--accent); border-color: rgba(0,255,136,0.35);  background: rgba(0,255,136,0.1); }
 .kpv-badge-pod     { color: var(--purple); border-color: rgba(179,136,255,0.35);background: rgba(179,136,255,0.1); }
 .kpv-badge-ip      { color: var(--yellow); border-color: rgba(255,215,64,0.35); background: rgba(255,215,64,0.1); }
 .kpv-badge-any     { color: var(--yellow); border-color: rgba(255,215,64,0.35); background: rgba(255,215,64,0.07); }
