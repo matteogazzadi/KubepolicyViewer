@@ -5,24 +5,30 @@
 
 <PageTitle>Kubernetes Network Policy Viewer</PageTitle>
 
-<div class="kpv-shell">
+<div class="kpv-shell @(isDarkTheme ? "" : "light-theme")">
 
     <!-- ── Header ─────────────────────────────────────────────── -->
     <header class="kpv-header">
         <div class="kpv-header-brand">
             <svg class="kpv-logo" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="16" cy="16" r="15" fill="#0a1a3a" stroke="#00b4ff" stroke-width="1.2"/>
-                <path d="M16 5 L19 13 H27 L21 18 L23 26 L16 21 L9 26 L11 18 L5 13 H13 Z" fill="#00b4ff" opacity="0.9"/>
+                <circle class="kpv-logo-bg"   cx="16" cy="16" r="15" fill="#0a1a3a" stroke="#00ff88" stroke-width="1.2"/>
+                <path   class="kpv-logo-star" d="M16 5 L19 13 H27 L21 18 L23 26 L16 21 L9 26 L11 18 L5 13 H13 Z" fill="#00ff88" opacity="0.9"/>
             </svg>
             <div>
                 <h1 class="kpv-title">Network Policy Viewer</h1>
                 <p class="kpv-subtitle">kubernetes / network-policies</p>
             </div>
         </div>
-        @if (!string.IsNullOrEmpty(K8s.InitializationError))
-        {
-            <div class="kpv-conn-error">&#9888; @K8s.InitializationError</div>
-        }
+        <div style="display:flex;align-items:center;gap:0.5rem">
+            <button class="kpv-theme-btn" @onclick="ToggleTheme"
+                    title="@(isDarkTheme ? "Switch to light mode" : "Switch to dark mode")">
+                @(isDarkTheme ? "☀" : "☾")
+            </button>
+            @if (!string.IsNullOrEmpty(K8s.InitializationError))
+            {
+                <div class="kpv-conn-error">&#9888; @K8s.InitializationError</div>
+            }
+        </div>
     </header>
 
     <!-- ── Tab bar ─────────────────────────────────────────────── -->
@@ -35,12 +41,8 @@
                 @onclick='() => SwitchTab("test")'>Connectivity Test</button>
     </div>
 
-    <!-- ═══════════════════════════════════════════════════════════
-         TAB: POD INSPECTOR
-    ═══════════════════════════════════════════════════════════════ -->
     @if (activeTab == "inspector")
     {
-        <!-- Toolbar -->
         <div class="kpv-toolbar">
             <div class="kpv-toolbar-group">
                 <label class="kpv-label">Namespace</label>
@@ -387,7 +389,7 @@
             </div>
         }
     }
-    else if (activeTab == "overview")
+    @if (activeTab == "overview")
     {
         <div class="kpv-content">
             @if (overviewLoading)
@@ -459,7 +461,7 @@
             }
         </div>
     }
-    else if (activeTab == "test")
+    @if (activeTab == "test")
     {
         <div class="kpv-content">
 
@@ -694,6 +696,16 @@
 </div>
 
 @code {
+    // ── Theme ────────────────────────────────────────────────────
+    private bool isDarkTheme = true;
+
+    private async Task ToggleTheme()
+    {
+        isDarkTheme = !isDarkTheme;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "kpv-theme", isDarkTheme ? "dark" : "light"); } catch { }
+        try { await JS.InvokeVoidAsync("policyGraph.setTheme", isDarkTheme); } catch { }
+    }
+
     // ── Inspector ────────────────────────────────────────────────
     private List<NamespaceInfo>     namespaces      = [];
     private List<PodInfo>           pods            = [];
@@ -747,6 +759,15 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            try
+            {
+                var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "kpv-theme");
+                if (saved == "light") { isDarkTheme = false; StateHasChanged(); }
+            }
+            catch { }
+        }
         if (graphNeedsUpdate)
         {
             graphNeedsUpdate = false;

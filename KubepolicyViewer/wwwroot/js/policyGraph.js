@@ -12,6 +12,7 @@
     window.policyGraph = {
         network: null,
         _animFrame: null,
+        _darkMode: true,
 
         init: function (containerId, graphData) {
             const container = document.getElementById(containerId);
@@ -137,21 +138,36 @@
                 ctx.save();
                 ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-                const grad = ctx.createRadialGradient(w * 0.5, h * 0.4, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.9);
-                grad.addColorStop(0, '#0a0f1e');
-                grad.addColorStop(0.55, '#070c18');
-                grad.addColorStop(1, '#050810');
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, w, h);
+                if (self._darkMode) {
+                    const grad = ctx.createRadialGradient(w * 0.5, h * 0.4, 0, w * 0.5, h * 0.5, Math.max(w, h) * 0.9);
+                    grad.addColorStop(0, '#0a0f1e');
+                    grad.addColorStop(0.55, '#070c18');
+                    grad.addColorStop(1, '#050810');
+                    ctx.fillStyle = grad;
+                    ctx.fillRect(0, 0, w, h);
 
-                for (const s of stars) {
-                    const alpha = s.bright
-                        ? 0.45 + 0.55 * Math.pow(Math.sin(t * s.speed + s.phase), 2)
-                        : 0.15 + 0.25 * Math.pow(Math.sin(t * s.speed + s.phase), 2);
-                    ctx.beginPath();
-                    ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2);
-                    ctx.fillStyle = 'rgba(212,227,255,' + alpha.toFixed(3) + ')';
-                    ctx.fill();
+                    for (const s of stars) {
+                        const alpha = s.bright
+                            ? 0.45 + 0.55 * Math.pow(Math.sin(t * s.speed + s.phase), 2)
+                            : 0.15 + 0.25 * Math.pow(Math.sin(t * s.speed + s.phase), 2);
+                        ctx.beginPath();
+                        ctx.arc(s.x * w, s.y * h, s.r, 0, Math.PI * 2);
+                        ctx.fillStyle = 'rgba(212,227,255,' + alpha.toFixed(3) + ')';
+                        ctx.fill();
+                    }
+                } else {
+                    ctx.fillStyle = '#f4f7f5';
+                    ctx.fillRect(0, 0, w, h);
+                    // Subtle dot grid
+                    const step = 22;
+                    for (let x = step; x < w; x += step) {
+                        for (let y = step; y < h; y += step) {
+                            ctx.beginPath();
+                            ctx.arc(x, y, 0.9, 0, Math.PI * 2);
+                            ctx.fillStyle = 'rgba(0,135,84,0.12)';
+                            ctx.fill();
+                        }
+                    }
                 }
 
                 ctx.restore();
@@ -169,6 +185,10 @@
                 }
             };
             this._animFrame = requestAnimationFrame(animate);
+        },
+
+        setTheme: function (isDark) {
+            this._darkMode = isDark !== false;
         },
 
         fit: function () {

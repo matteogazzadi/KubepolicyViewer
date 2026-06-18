@@ -41,7 +41,7 @@ html, body {
     font-family: var(--font-ui);
     background: var(--bg-void);
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 15px;
     -webkit-font-smoothing: antialiased;
 }
 
@@ -716,3 +716,64 @@ html, body {
 #blazor-error-ui .dismiss { cursor: pointer; font-weight: bold; float: right; }
 
 a, .btn-link { color: var(--accent); }
+
+/* ─── Theme toggle button ────────────────────────────────────── */
+.kpv-theme-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 1px solid var(--border-bright);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
+}
+.kpv-theme-btn:hover { border-color: var(--accent); color: var(--accent); box-shadow: var(--accent-glow); }
+
+/* ─── Light theme ────────────────────────────────────────────── */
+.light-theme {
+    --bg-void:    #f4f7f5;
+    --bg-deep:    #eaede9;
+    --bg-panel:   #ffffff;
+    --bg-card:    #f8fbf8;
+    --bg-surface: #eff3ef;
+    --bg-hover:   #e4ece5;
+
+    --border:        rgba(0, 120, 75, 0.13);
+    --border-bright: rgba(0, 120, 75, 0.32);
+    --border-active: #008754;
+
+    --accent:      #008754;
+    --accent-dim:  rgba(0, 135, 84, 0.09);
+    --accent-glow: 0 0 10px rgba(0, 135, 84, 0.22);
+
+    --green:  #1b7a3a;
+    --orange: #c44e0a;
+    --red:    #c0001a;
+    --purple: #5e35b1;
+    --yellow: #9a6e00;
+
+    --text-primary:   #0d2018;
+    --text-secondary: #3d6050;
+    --text-dim:       #8aafa0;
+    --text-accent:    #008754;
+}
+
+.light-theme ::-webkit-scrollbar-track { background: var(--bg-deep); }
+.light-theme ::-webkit-scrollbar-thumb { background: var(--border-bright); }
+
+/* Logo colours in light mode */
+.light-theme .kpv-logo-bg   { fill: #d8f0e4; stroke: var(--accent); }
+.light-theme .kpv-logo-star { fill: var(--accent); }
+
+/* Graph container keeps dark background regardless of theme */
+.kpv-graph { background: #070c18 !important; }
+
+/* Adjust shadows in light mode (glows visible on dark nodes against light UI) */
+.light-theme .kpv-section,
+.light-theme .kpv-card { box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+
