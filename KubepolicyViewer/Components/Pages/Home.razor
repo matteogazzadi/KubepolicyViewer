@@ -285,6 +285,88 @@
                     }
                 }
             </div>
+
+            <!-- Cross-namespace policies -->
+            @if (crossNsPolicies.Count > 0)
+            {
+                <div class="kpv-section">
+                    <div class="kpv-section-header">
+                        <span class="kpv-section-title">
+                            Cross-Namespace References
+                            <span class="badge bg-secondary ms-2">@crossNsPolicies.Count</span>
+                        </span>
+                        <span style="font-size:0.78rem;color:#6c757d;">
+                            Policies in other namespaces whose FROM/TO namespaceSelector matches <strong>@selectedNamespace</strong>
+                        </span>
+                    </div>
+                    @foreach (var policy in crossNsPolicies)
+                    {
+                        <div class="kpv-policy-card kpv-policy-card-cross">
+                            <div class="kpv-policy-header">
+                                <span class="kpv-policy-name">@policy.Name</span>
+                                <span class="badge bg-info text-dark me-1">@policy.Namespace</span>
+                                <div class="kpv-policy-badges">
+                                    @foreach (var t in policy.PolicyTypes)
+                                    {
+                                        <span class="badge @(t == "Ingress" ? "bg-success" : "bg-warning text-dark")">@t</span>
+                                    }
+                                </div>
+                                <span class="kpv-policy-sel">podSelector: @policy.PodSelectorStr</span>
+                            </div>
+
+                            @if (policy.IngressRules.Count > 0)
+                            {
+                                <div class="kpv-rules-section kpv-rules-ingress">
+                                    <div class="kpv-rules-label">↓ Ingress (references @selectedNamespace as source)</div>
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead><tr><th>#</th><th>From</th><th>Ports</th></tr></thead>
+                                        <tbody>
+                                            @for (int i = 0; i < policy.IngressRules.Count; i++)
+                                            {
+                                                var rule = policy.IngressRules[i];
+                                                var idx = i + 1;
+                                                <tr>
+                                                    <td class="text-muted">@idx</td>
+                                                    <td>
+                                                        @if (rule.AllowsAll) { <span class="badge bg-warning text-dark">Any</span> }
+                                                        else { @foreach (var peer in rule.From) { <div class="kpv-peer">@RenderPeer(peer)</div> } }
+                                                    </td>
+                                                    <td>@foreach (var p in rule.Ports) { <span class="badge bg-light text-dark border me-1">@p.Display</span> }</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+
+                            @if (policy.EgressRules.Count > 0)
+                            {
+                                <div class="kpv-rules-section kpv-rules-egress">
+                                    <div class="kpv-rules-label">↑ Egress (references @selectedNamespace as destination)</div>
+                                    <table class="table table-sm table-hover mb-0">
+                                        <thead><tr><th>#</th><th>To</th><th>Ports</th></tr></thead>
+                                        <tbody>
+                                            @for (int i = 0; i < policy.EgressRules.Count; i++)
+                                            {
+                                                var rule = policy.EgressRules[i];
+                                                var idx = i + 1;
+                                                <tr>
+                                                    <td class="text-muted">@idx</td>
+                                                    <td>
+                                                        @if (rule.AllowsAll) { <span class="badge bg-warning text-dark">Any</span> }
+                                                        else { @foreach (var peer in rule.To) { <div class="kpv-peer">@RenderPeer(peer)</div> } }
+                                                    </td>
+                                                    <td>@foreach (var p in rule.Ports) { <span class="badge bg-light text-dark border me-1">@p.Display</span> }</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
         </div>
     }
     else if (!isLoading && string.IsNullOrEmpty(selectedPod) && !string.IsNullOrEmpty(selectedNamespace))
@@ -317,6 +399,7 @@
     private List<NamespaceInfo> namespaces = [];
     private List<PodInfo> pods = [];
     private List<NetworkPolicyInfo> policies = [];
+    private List<NetworkPolicyInfo> crossNsPolicies = [];
     private PodInfo? currentPod;
     private string selectedNamespace = "";
     private string selectedPod = "";
@@ -335,7 +418,15 @@
         if (graphNeedsUpdate)
         {
             graphNeedsUpdate = false;
-            await RenderGraphAsync();
+            try
+            {
+                await RenderGraphAsync();
+            }
+            catch (Exception ex)
+            {
+                error = $"Graph render error: {ex.Message}";
+                StateHasChanged();
+            }
         }
     }
 
@@ -343,6 +434,7 @@
     {
         isLoading = true;
         error = null;
+        StateHasChanged();
         try
         {
             namespaces = await K8s.GetNamespacesAsync();
@@ -363,9 +455,11 @@
         selectedPod = "";
         pods = [];
         policies = [];
+        crossNsPolicies = [];
         currentPod = null;
         error = null;
-        await JS.InvokeVoidAsync("policyGraph.destroy");
+
+        try { await JS.InvokeVoidAsync("policyGraph.destroy"); } catch { }
 
         if (!string.IsNullOrEmpty(selectedNamespace))
             await LoadPodsAsync();
@@ -375,6 +469,7 @@
     {
         isLoading = true;
         error = null;
+        StateHasChanged();
         try
         {
             pods = await K8s.GetPodsAsync(selectedNamespace);
@@ -393,9 +488,11 @@
     {
         selectedPod = e.Value?.ToString() ?? "";
         policies = [];
+        crossNsPolicies = [];
         currentPod = null;
         error = null;
-        await JS.InvokeVoidAsync("policyGraph.destroy");
+
+        try { await JS.InvokeVoidAsync("policyGraph.destroy"); } catch { }
 
         if (!string.IsNullOrEmpty(selectedPod))
             await LoadPoliciesAsync();
@@ -405,10 +502,12 @@
     {
         isLoading = true;
         error = null;
+        StateHasChanged();
         try
         {
-            var (p, pod) = await K8s.GetNetworkPoliciesForPodAsync(selectedNamespace, selectedPod);
+            var (p, cross, pod) = await K8s.GetNetworkPoliciesForPodAsync(selectedNamespace, selectedPod);
             policies = p;
+            crossNsPolicies = cross;
             currentPod = pod;
             graphNeedsUpdate = true;
         }
@@ -434,7 +533,7 @@
 
     private async Task FitGraphAsync()
     {
-        await JS.InvokeVoidAsync("policyGraph.fit");
+        try { await JS.InvokeVoidAsync("policyGraph.fit"); } catch { }
     }
 
     private async Task RenderGraphAsync()

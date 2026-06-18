@@ -300,4 +300,7 @@ html, body {
 
 #blazor-error-ui .dismiss { cursor: pointer; font-weight: bold; float: right; }
 
+.kpv-policy-card-cross { border-left: 3px solid #0288d1; }
+.kpv-policy-card-cross .kpv-policy-header { background: linear-gradient(90deg, #e1f5fe 0%, #f5f5f5 100%); }
+
 a, .btn-link { color: #1565c0; }
