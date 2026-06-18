@@ -29,9 +29,7 @@ public class KubernetesService
         EnsureClient();
         var result = await _client!.CoreV1.ListNamespaceAsync();
         return result.Items
-            .Select(n => new NamespaceInfo(
-                n.Metadata.Name,
-                ToDict(n.Metadata.Labels)))
+            .Select(n => new NamespaceInfo(n.Metadata.Name, ToDict(n.Metadata.Labels)))
             .OrderBy(n => n.Name)
             .ToList();
     }
@@ -50,19 +48,27 @@ public class KubernetesService
             .ToList();
     }
 
-    public async Task<(List<NetworkPolicyInfo> Policies, PodInfo? Pod)> GetNetworkPoliciesForPodAsync(
-        string namespaceName, string podName)
+    /// <summary>
+    /// Returns policies that SELECT the pod (same namespace) plus policies in OTHER
+    /// namespaces whose FROM/TO namespaceSelector references the pod's namespace.
+    /// </summary>
+    public async Task<(List<NetworkPolicyInfo> Policies, List<NetworkPolicyInfo> CrossNsPolicies, PodInfo? Pod)>
+        GetNetworkPoliciesForPodAsync(string namespaceName, string podName)
     {
         EnsureClient();
 
         var podTask = _client!.CoreV1.ReadNamespacedPodAsync(podName, namespaceName);
         var policiesTask = _client.NetworkingV1.ListNamespacedNetworkPolicyAsync(namespaceName);
+        var nsTask = _client.CoreV1.ReadNamespaceAsync(namespaceName);
 
-        await Task.WhenAll(podTask, policiesTask);
+        await Task.WhenAll(podTask, policiesTask, nsTask);
 
         var pod = podTask.Result;
         var allPolicies = policiesTask.Result;
+        var podNs = nsTask.Result;
+
         var podLabels = ToDict(pod.Metadata.Labels);
+        var nsLabels = ToDict(podNs.Metadata.Labels);
 
         var podInfo = new PodInfo(
             pod.Metadata.Name,
@@ -75,8 +81,60 @@ public class KubernetesService
             .Select(MapPolicy)
             .ToList();
 
-        return (matching, podInfo);
+        var crossNs = await GetCrossNamespacePoliciesAsync(namespaceName, nsLabels);
+
+        return (matching, crossNs, podInfo);
     }
+
+    // ── Cross-namespace: policies in other namespaces that reference this one ───
+
+    private async Task<List<NetworkPolicyInfo>> GetCrossNamespacePoliciesAsync(
+        string podNamespace, Dictionary<string, string> podNsLabels)
+    {
+        var allNsResult = await _client!.CoreV1.ListNamespaceAsync();
+        var otherNs = allNsResult.Items
+            .Where(n => n.Metadata.Name != podNamespace)
+            .ToList();
+
+        if (otherNs.Count == 0) return [];
+
+        var policyTasks = otherNs
+            .Select(n => _client.NetworkingV1.ListNamespacedNetworkPolicyAsync(n.Metadata.Name))
+            .ToArray();
+
+        var allLists = await Task.WhenAll(policyTasks);
+
+        var result = new List<NetworkPolicyInfo>();
+        foreach (var (_, list) in otherNs.Zip(allLists))
+            foreach (var policy in list.Items)
+                if (ReferencesNamespace(policy, podNsLabels))
+                    result.Add(MapPolicy(policy));
+
+        return result;
+    }
+
+    private static bool ReferencesNamespace(V1NetworkPolicy policy, Dictionary<string, string> nsLabels)
+    {
+        if (policy.Spec.Ingress != null)
+            foreach (var rule in policy.Spec.Ingress)
+                if (rule.FromProperty != null)
+                    foreach (var peer in rule.FromProperty)
+                        if (peer.NamespaceSelector != null &&
+                            PolicyMatcher.LabelsMatchSelector(nsLabels, peer.NamespaceSelector))
+                            return true;
+
+        if (policy.Spec.Egress != null)
+            foreach (var rule in policy.Spec.Egress)
+                if (rule.To != null)
+                    foreach (var peer in rule.To)
+                        if (peer.NamespaceSelector != null &&
+                            PolicyMatcher.LabelsMatchSelector(nsLabels, peer.NamespaceSelector))
+                            return true;
+
+        return false;
+    }
+
+    // ── Mapping helpers ──────────────────────────────────────────────────────
 
     private NetworkPolicyInfo MapPolicy(V1NetworkPolicy p)
     {
@@ -89,22 +147,18 @@ public class KubernetesService
         };
 
         if (p.Spec.Ingress != null)
-        {
             info.IngressRules = p.Spec.Ingress.Select(r => new IngressRuleInfo
             {
                 From = r.FromProperty?.Select(MapPeer).ToList() ?? [],
                 Ports = MapPorts(r.Ports)
             }).ToList();
-        }
 
         if (p.Spec.Egress != null)
-        {
             info.EgressRules = p.Spec.Egress.Select(r => new EgressRuleInfo
             {
                 To = r.To?.Select(MapPeer).ToList() ?? [],
                 Ports = MapPorts(r.Ports)
             }).ToList();
-        }
 
         return info;
     }
