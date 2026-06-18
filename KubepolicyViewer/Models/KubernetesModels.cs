@@ -61,6 +61,29 @@ public record PortInfo(string Protocol, string Port)
     public string Display => Port == "any" ? "any" : $"{Port}/{Protocol}";
 }
 
+public record PolicySummary(
+    string PolicyName,
+    string Namespace,
+    string PodSelectorStr,
+    List<string> PolicyTypes,
+    int AffectedPodCount
+);
+
+public enum ConnectivityStatus { Unrestricted, Allowed, Blocked }
+
+public class ConnectivityResult
+{
+    public ConnectivityStatus IngressStatus { get; set; }
+    public ConnectivityStatus EgressStatus { get; set; }
+    public bool CanConnect =>
+        IngressStatus != ConnectivityStatus.Blocked &&
+        EgressStatus  != ConnectivityStatus.Blocked;
+    public List<string> IngressBlockingPolicies { get; set; } = [];
+    public List<string> EgressBlockingPolicies  { get; set; } = [];
+    public List<string> IngressAllowingPolicies { get; set; } = [];
+    public List<string> EgressAllowingPolicies  { get; set; } = [];
+}
+
 // ── Graph models — properties MUST be camelCase for vis-network ──────────────
 
 public class GraphData
