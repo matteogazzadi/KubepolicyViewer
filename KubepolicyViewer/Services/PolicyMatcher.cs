@@ -70,4 +70,54 @@ public static class PolicyMatcher
 
     public static bool HasSelectors(V1LabelSelector? sel) =>
         sel != null && (sel.MatchLabels?.Count > 0 || sel.MatchExpressions?.Count > 0);
+
+    /// <summary>
+    /// Returns true if the given peer (from an ingress rule) matches the source pod.
+    /// policyNamespace is the namespace where the NetworkPolicy lives (same as dstPod's namespace).
+    /// </summary>
+    public static bool PeerMatchesSource(
+        V1NetworkPolicyPeer peer,
+        Dictionary<string, string> srcPodLabels,
+        Dictionary<string, string> srcNsLabels,
+        string srcNamespace,
+        string policyNamespace)
+    {
+        if (peer.IpBlock != null) return false;
+
+        if (peer.NamespaceSelector != null)
+        {
+            if (!LabelsMatchSelector(srcNsLabels, peer.NamespaceSelector)) return false;
+        }
+        else if (srcNamespace != policyNamespace) return false;
+
+        if (peer.PodSelector != null && !LabelsMatchSelector(srcPodLabels, peer.PodSelector))
+            return false;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Returns true if the given peer (from an egress rule) matches the destination pod.
+    /// policyNamespace is the namespace where the NetworkPolicy lives (same as srcPod's namespace).
+    /// </summary>
+    public static bool PeerMatchesDestination(
+        V1NetworkPolicyPeer peer,
+        Dictionary<string, string> dstPodLabels,
+        Dictionary<string, string> dstNsLabels,
+        string dstNamespace,
+        string policyNamespace)
+    {
+        if (peer.IpBlock != null) return false;
+
+        if (peer.NamespaceSelector != null)
+        {
+            if (!LabelsMatchSelector(dstNsLabels, peer.NamespaceSelector)) return false;
+        }
+        else if (dstNamespace != policyNamespace) return false;
+
+        if (peer.PodSelector != null && !LabelsMatchSelector(dstPodLabels, peer.PodSelector))
+            return false;
+
+        return true;
+    }
 }

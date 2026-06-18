@@ -134,6 +134,150 @@ public class KubernetesService
         return false;
     }
 
+    // ── Policy overview ──────────────────────────────────────────────────────
+
+    public async Task<List<PolicySummary>> GetAllPoliciesWithPodCountAsync()
+    {
+        EnsureClient();
+        var nsResult = await _client!.CoreV1.ListNamespaceAsync();
+
+        var tasks = nsResult.Items.Select(async ns =>
+        {
+            var nsName = ns.Metadata.Name;
+            var policiesTask = _client.NetworkingV1.ListNamespacedNetworkPolicyAsync(nsName);
+            var podsTask     = _client.CoreV1.ListNamespacedPodAsync(nsName);
+            await Task.WhenAll(policiesTask, podsTask);
+
+            var podLabelsList = podsTask.Result.Items
+                .Select(p => ToDict(p.Metadata.Labels))
+                .ToList();
+
+            return policiesTask.Result.Items.Select(p =>
+            {
+                var count = podLabelsList.Count(podLabels =>
+                    PolicyMatcher.LabelsMatchSelector(podLabels, p.Spec.PodSelector));
+                return new PolicySummary(
+                    p.Metadata.Name,
+                    nsName,
+                    PolicyMatcher.SelectorToString(p.Spec.PodSelector),
+                    p.Spec.PolicyTypes?.ToList() ?? [],
+                    count);
+            });
+        }).ToArray();
+
+        var results = await Task.WhenAll(tasks);
+        return results
+            .SelectMany(x => x)
+            .OrderBy(p => p.Namespace)
+            .ThenBy(p => p.PolicyName)
+            .ToList();
+    }
+
+    // ── Connectivity test ─────────────────────────────────────────────────────
+
+    public async Task<ConnectivityResult> TestConnectivityAsync(
+        string srcNamespace, string srcPodName,
+        string dstNamespace, string dstPodName)
+    {
+        EnsureClient();
+
+        var srcPodTask      = _client!.CoreV1.ReadNamespacedPodAsync(srcPodName, srcNamespace);
+        var dstPodTask      = _client.CoreV1.ReadNamespacedPodAsync(dstPodName, dstNamespace);
+        var srcNsTask       = _client.CoreV1.ReadNamespaceAsync(srcNamespace);
+        var dstNsTask       = _client.CoreV1.ReadNamespaceAsync(dstNamespace);
+        var srcPoliciesTask = _client.NetworkingV1.ListNamespacedNetworkPolicyAsync(srcNamespace);
+        var dstPoliciesTask = _client.NetworkingV1.ListNamespacedNetworkPolicyAsync(dstNamespace);
+
+        await Task.WhenAll(srcPodTask, dstPodTask, srcNsTask, dstNsTask, srcPoliciesTask, dstPoliciesTask);
+
+        var srcPodLabels = ToDict(srcPodTask.Result.Metadata.Labels);
+        var dstPodLabels = ToDict(dstPodTask.Result.Metadata.Labels);
+        var srcNsLabels  = ToDict(srcNsTask.Result.Metadata.Labels);
+        var dstNsLabels  = ToDict(dstNsTask.Result.Metadata.Labels);
+
+        var result = new ConnectivityResult();
+
+        // ── INGRESS check on dstPod ──────────────────────────────────────────
+        var dstIngressPolicies = dstPoliciesTask.Result.Items
+            .Where(p => p.Spec.PolicyTypes?.Contains("Ingress") == true &&
+                        PolicyMatcher.LabelsMatchSelector(dstPodLabels, p.Spec.PodSelector))
+            .ToList();
+
+        if (dstIngressPolicies.Count == 0)
+        {
+            result.IngressStatus = ConnectivityStatus.Unrestricted;
+        }
+        else
+        {
+            bool ingressAllowed = false;
+            foreach (var policy in dstIngressPolicies)
+            {
+                if (policy.Spec.Ingress == null || policy.Spec.Ingress.Count == 0)
+                {
+                    result.IngressBlockingPolicies.Add($"{policy.Metadata.NamespaceProperty}/{policy.Metadata.Name}");
+                    continue;
+                }
+
+                bool policyAllows = policy.Spec.Ingress.Any(rule =>
+                    rule.FromProperty == null || rule.FromProperty.Count == 0 ||
+                    rule.FromProperty.Any(peer => PolicyMatcher.PeerMatchesSource(
+                        peer, srcPodLabels, srcNsLabels, srcNamespace, dstNamespace)));
+
+                if (policyAllows)
+                {
+                    ingressAllowed = true;
+                    result.IngressAllowingPolicies.Add($"{policy.Metadata.NamespaceProperty}/{policy.Metadata.Name}");
+                }
+                else
+                {
+                    result.IngressBlockingPolicies.Add($"{policy.Metadata.NamespaceProperty}/{policy.Metadata.Name}");
+                }
+            }
+            result.IngressStatus = ingressAllowed ? ConnectivityStatus.Allowed : ConnectivityStatus.Blocked;
+        }
+
+        // ── EGRESS check on srcPod ───────────────────────────────────────────
+        var srcEgressPolicies = srcPoliciesTask.Result.Items
+            .Where(p => p.Spec.PolicyTypes?.Contains("Egress") == true &&
+                        PolicyMatcher.LabelsMatchSelector(srcPodLabels, p.Spec.PodSelector))
+            .ToList();
+
+        if (srcEgressPolicies.Count == 0)
+        {
+            result.EgressStatus = ConnectivityStatus.Unrestricted;
+        }
+        else
+        {
+            bool egressAllowed = false;
+            foreach (var policy in srcEgressPolicies)
+            {
+                if (policy.Spec.Egress == null || policy.Spec.Egress.Count == 0)
+                {
+                    result.EgressBlockingPolicies.Add($"{policy.Metadata.NamespaceProperty}/{policy.Metadata.Name}");
+                    continue;
+                }
+
+                bool policyAllows = policy.Spec.Egress.Any(rule =>
+                    rule.To == null || rule.To.Count == 0 ||
+                    rule.To.Any(peer => PolicyMatcher.PeerMatchesDestination(
+                        peer, dstPodLabels, dstNsLabels, dstNamespace, srcNamespace)));
+
+                if (policyAllows)
+                {
+                    egressAllowed = true;
+                    result.EgressAllowingPolicies.Add($"{policy.Metadata.NamespaceProperty}/{policy.Metadata.Name}");
+                }
+                else
+                {
+                    result.EgressBlockingPolicies.Add($"{policy.Metadata.NamespaceProperty}/{policy.Metadata.Name}");
+                }
+            }
+            result.EgressStatus = egressAllowed ? ConnectivityStatus.Allowed : ConnectivityStatus.Blocked;
+        }
+
+        return result;
+    }
+
     // ── Mapping helpers ──────────────────────────────────────────────────────
 
     private NetworkPolicyInfo MapPolicy(V1NetworkPolicy p)
