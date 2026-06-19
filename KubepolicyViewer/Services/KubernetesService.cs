@@ -278,6 +278,15 @@ public class KubernetesService
         return result;
     }
 
+    // ── YAML export ──────────────────────────────────────────────────────────
+
+    public async Task<string> GetNetworkPolicyYamlAsync(string namespaceName, string policyName)
+    {
+        EnsureClient();
+        var policy = await _client!.NetworkingV1.ReadNamespacedNetworkPolicyAsync(policyName, namespaceName);
+        return KubernetesYaml.Serialize(policy);
+    }
+
     // ── Mapping helpers ──────────────────────────────────────────────────────
 
     private NetworkPolicyInfo MapPolicy(V1NetworkPolicy p)

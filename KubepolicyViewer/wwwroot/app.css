@@ -22,8 +22,8 @@
     --yellow: #ffd740;
 
     --text-primary:   #ccffcc;
-    --text-secondary: #5a8a65;
-    --text-dim:       #2a4a35;
+    --text-secondary: #8ab89a;
+    --text-dim:       #4d7060;
     --text-accent:    #00ff88;
 
     --font-ui:   'Inter', 'Segoe UI', system-ui, sans-serif;
@@ -776,4 +776,87 @@ a, .btn-link { color: var(--accent); }
 /* Adjust shadows in light mode (glows visible on dark nodes against light UI) */
 .light-theme .kpv-section,
 .light-theme .kpv-card { box-shadow: 0 1px 6px rgba(0,0,0,0.08); }
+
+/* ─── Sortable table headers ─────────────────────────────────── */
+.kpv-sort-header {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.kpv-sort-header:hover { color: var(--accent) !important; }
+
+/* ─── Eye icon button ────────────────────────────────────────── */
+.kpv-btn-eye {
+    padding: 0.1rem 0.32rem;
+    font-size: 0.8rem;
+    line-height: 1;
+    flex-shrink: 0;
+    opacity: 0.55;
+    transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+}
+.kpv-btn-eye:hover:not(:disabled) { opacity: 1; }
+
+/* ─── YAML modal ─────────────────────────────────────────────── */
+.kpv-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 8, 16, 0.82);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+}
+
+.kpv-modal {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: var(--radius);
+    width: 100%;
+    max-width: 820px;
+    max-height: 82vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 40px rgba(0, 255, 136, 0.12), 0 20px 60px rgba(0,0,0,0.5);
+    overflow: hidden;
+}
+
+.kpv-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 1rem;
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--border-bright);
+    flex-shrink: 0;
+    gap: 1rem;
+}
+
+.kpv-modal-title {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--accent);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kpv-modal-body {
+    overflow-y: auto;
+    flex: 1;
+}
+
+.kpv-yaml {
+    margin: 0;
+    padding: 1rem 1.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--text-primary);
+    line-height: 1.65;
+    white-space: pre;
+    background: transparent;
+    border: none;
+}
 
