@@ -179,6 +179,8 @@
                                         }
                                     </div>
                                     <span class="kpv-policy-sel">podSelector: @policy.PodSelectorStr</span>
+                                    <button class="kpv-btn kpv-btn-eye" title="View YAML"
+                                            @onclick="() => OpenYamlAsync(policy.Namespace, policy.Name)">&#128065;</button>
                                 </div>
 
                                 @if (policy.IngressRules.Count > 0)
@@ -307,6 +309,8 @@
                                         }
                                     </div>
                                     <span class="kpv-policy-sel">podSelector: @policy.PodSelectorStr</span>
+                                    <button class="kpv-btn kpv-btn-eye" title="View YAML"
+                                            @onclick="() => OpenYamlAsync(policy.Namespace, policy.Name)">&#128065;</button>
                                 </div>
 
                                 @if (policy.IngressRules.Count > 0)
@@ -429,18 +433,22 @@
                         <table class="table table-sm mb-0">
                             <thead>
                                 <tr>
-                                    <th>Policy Name</th>
-                                    <th>Namespace</th>
+                                    <th class="kpv-sort-header" @onclick='() => ToggleSort("PolicyName")'>Policy Name@SortIndicator("PolicyName")</th>
+                                    <th class="kpv-sort-header" @onclick='() => ToggleSort("Namespace")'>Namespace@SortIndicator("Namespace")</th>
                                     <th>Pod Selector</th>
                                     <th>Types</th>
-                                    <th style="text-align:right">Affected Pods</th>
+                                    <th class="kpv-sort-header" @onclick='() => ToggleSort("AffectedPodCount")' style="text-align:right">Affected Pods@SortIndicator("AffectedPodCount")</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var p in FilteredPolicies)
+                                @foreach (var p in SortedFilteredPolicies)
                                 {
                                     <tr>
-                                        <td style="font-family:var(--font-mono);color:var(--text-primary)">@p.PolicyName</td>
+                                        <td style="font-family:var(--font-mono);color:var(--text-primary)">
+                                            @p.PolicyName
+                                            <button class="kpv-btn kpv-btn-eye" title="View YAML"
+                                                    @onclick="() => OpenYamlAsync(p.Namespace, p.PolicyName)">&#128065;</button>
+                                        </td>
                                         <td><span class="kpv-badge kpv-badge-ns">@p.Namespace</span></td>
                                         <td style="font-family:var(--font-mono);color:var(--text-secondary);font-size:0.75rem">@p.PodSelectorStr</td>
                                         <td>
@@ -693,6 +701,37 @@
         </div>
     }
 
+    @if (showYaml)
+    {
+        <div class="kpv-modal-overlay" @onclick="CloseYaml">
+            <div class="kpv-modal" @onclick:stopPropagation>
+                <div class="kpv-modal-header">
+                    <span class="kpv-modal-title">@yamlModalTitle</span>
+                    <div style="display:flex;gap:0.5rem;align-items:center">
+                        <button class="kpv-btn kpv-btn-primary" @onclick="CopyYamlAsync"
+                                disabled="@(string.IsNullOrEmpty(yamlContent))">
+                            @(copiedToClipboard ? "✓ Copied!" : "&#128203; Copy")
+                        </button>
+                        <button class="kpv-btn" @onclick="CloseYaml">&#10005; Close</button>
+                    </div>
+                </div>
+                <div class="kpv-modal-body">
+                    @if (string.IsNullOrEmpty(yamlContent))
+                    {
+                        <div style="display:flex;align-items:center;gap:0.75rem;color:var(--text-secondary);padding:2rem">
+                            <span class="kpv-spinner"></span>
+                            <span style="font-size:0.82rem;font-family:var(--font-mono)">Loading YAML…</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <pre class="kpv-yaml">@yamlContent</pre>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+
 </div>
 
 @code {
@@ -727,6 +766,8 @@
     private bool                overviewLoading = false;
     private string?             overviewError;
     private string              overviewSearch  = "";
+    private string              sortColumn      = "AffectedPodCount";
+    private bool                sortAscending   = false;
 
     private IEnumerable<PolicySummary> FilteredPolicies =>
         string.IsNullOrWhiteSpace(overviewSearch)
@@ -735,6 +776,20 @@
                 p.PolicyName.Contains(overviewSearch, StringComparison.OrdinalIgnoreCase) ||
                 p.Namespace .Contains(overviewSearch, StringComparison.OrdinalIgnoreCase) ||
                 p.PodSelectorStr.Contains(overviewSearch, StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<PolicySummary> SortedFilteredPolicies => sortColumn switch
+    {
+        "PolicyName"      => sortAscending ? FilteredPolicies.OrderBy(p => p.PolicyName)      : FilteredPolicies.OrderByDescending(p => p.PolicyName),
+        "Namespace"       => sortAscending ? FilteredPolicies.OrderBy(p => p.Namespace)       : FilteredPolicies.OrderByDescending(p => p.Namespace),
+        "AffectedPodCount"=> sortAscending ? FilteredPolicies.OrderBy(p => p.AffectedPodCount): FilteredPolicies.OrderByDescending(p => p.AffectedPodCount),
+        _                 => FilteredPolicies
+    };
+
+    // ── YAML modal ───────────────────────────────────────────────
+    private bool   showYaml          = false;
+    private string yamlContent       = "";
+    private string yamlModalTitle    = "";
+    private bool   copiedToClipboard = false;
 
     // ── Connectivity test ────────────────────────────────────────
     private List<PodInfo>       srcPods      = [];
@@ -857,6 +912,52 @@
         if (currentPod == null) return;
         var graph = GraphBuilder.Build(currentPod, policies);
         await JS.InvokeVoidAsync("policyGraph.init", "policy-graph", graph);
+    }
+
+    // ── Overview sort ────────────────────────────────────────────
+
+    private void ToggleSort(string column)
+    {
+        if (sortColumn == column) sortAscending = !sortAscending;
+        else { sortColumn = column; sortAscending = column != "AffectedPodCount"; }
+    }
+
+    private string SortIndicator(string column) =>
+        sortColumn == column ? (sortAscending ? " ▲" : " ▼") : "";
+
+    // ── YAML modal methods ───────────────────────────────────────
+
+    private async Task OpenYamlAsync(string namespaceName, string policyName)
+    {
+        yamlModalTitle = $"{namespaceName}/{policyName}";
+        yamlContent = "";
+        showYaml = true;
+        copiedToClipboard = false;
+        StateHasChanged();
+        try   { yamlContent = await K8s.GetNetworkPolicyYamlAsync(namespaceName, policyName); }
+        catch (Exception ex) { yamlContent = $"# Error loading YAML: {ex.Message}"; }
+        StateHasChanged();
+    }
+
+    private void CloseYaml()
+    {
+        showYaml = false;
+        copiedToClipboard = false;
+        yamlContent = "";
+    }
+
+    private async Task CopyYamlAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", yamlContent);
+            copiedToClipboard = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            copiedToClipboard = false;
+            StateHasChanged();
+        }
+        catch { }
     }
 
     // ── Policy overview methods ──────────────────────────────────
