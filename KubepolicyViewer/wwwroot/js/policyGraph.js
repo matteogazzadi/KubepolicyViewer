@@ -55,7 +55,7 @@
                     hover: true,
                     tooltipDelay: 100,
                     navigationButtons: false,
-                    keyboard: { enabled: true },
+                    keyboard: { enabled: true, bindToWindow: false },
                     zoomView: true
                 },
                 groups: {
